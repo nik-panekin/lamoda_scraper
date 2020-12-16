@@ -1,3 +1,14 @@
+"""Данный скрипт предназначен для выгрузки информации о товарах заданной
+категории с сайта https://www.lamoda.ru. Сохраняются почти все характеристики
+товара вместе с его основным изображением.
+
+При запуске скрипта следует ввести адрес первой страницы категории товаров, и
+дальнейший процесс автоматически получит доступ остальным страницам, обработав
+таким образом все товары в категории.
+
+Результат работы с характеристиками товаров будет сохранён в файл .csv, а
+скачанные изображения - в отдельную папку img.
+"""
 import os
 import os.path
 import re
@@ -8,23 +19,42 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
+# Время ожидания ответа от веб-сервера (секунды)
 TIMEOUT = 5
+
+# Число попыток выполнить http-запрос при возникновении сбоя
 MAX_RETRIES = 3
+
+# Задержка после выполнения http-запроса (секунды)
 SLEEP_TIME = 1
-# URL = 'https://www.lamoda.ru/c/799/accs-muzhskie-chasy/'
+
+# Адрес страницы категории товаров по умолчанию
 DEFAULT_URL = 'https://www.lamoda.ru/c/5374/accs_ns-elektrchasymuj/'
+
+# Адрес интернет-магазина
 HOST = 'https://www.lamoda.ru'
+
+# URL субдомена, где хранятся изображения товаров на сервере
 IMAGE_HOST = 'https://a.lmcdn.ru/img600x866'
+
+# Заголовки http-запроса
 HEADERS = {
     'user-agent': ('Mozilla/5.0 (Windows NT 6.1; rv:82.0) Gecko/20100101 '
                    'Firefox/82.0'),
     'accept': '*/*',
 }
+
+# Имя файла по умолчанию для сохранения полученных данных
 DEFAULT_FILENAME = 'lamoda.csv'
+
+# Имя каталога для сохранения полученных изображений товаров
 IMAGE_DIR = 'img'
+
+# Регулярные выражения, используемые в парсинге сайта
 PAGE_RE = re.compile(r'pagination:\{current:(\d+),total:(\d+),')
 IMAGE_RE = re.compile(r'\["([^"]+)"')
 
+# Получить ответ сервера при GET-запросе
 def get_response(url: str, params: dict=None) -> requests.Response:
     for attempt in range(0, MAX_RETRIES):
         try:
@@ -38,6 +68,7 @@ def get_response(url: str, params: dict=None) -> requests.Response:
 
     return False
 
+# Получить текст html-страницы
 def get_html(url: str) -> str:
     r = get_response(url)
 
@@ -51,6 +82,7 @@ def get_html(url: str) -> str:
 
     return r.text
 
+# Сохранить в файл изображение по адресу URL
 def save_image(url: str, filename: str) -> bool:
     r = get_response(url)
 
@@ -74,7 +106,13 @@ def save_image(url: str, filename: str) -> bool:
     else:
         return True
 
+# Получить URL следующей страницы категории товаров
 def get_next_page(html: str, base_url: str) -> str:
+    """Входные параметры:
+    html: str - текст исходной html-страницы;
+    base_url: str - базовый URL страницы категории товаров, к которому будет
+    присоединён параметр с номером следующей страницы.
+    """
     search_results = re.findall(PAGE_RE, ''.join(html.split()))
     if search_results:
         current = int(search_results[0][0])
@@ -90,14 +128,21 @@ def get_next_page(html: str, base_url: str) -> str:
     else:
         return False
 
+# Получить адреса страниц всех товаров для заданной страницы категории
 def get_item_urls(html: str) -> list:
+    """Входные параметры:
+    html: str - текст html-страницы категории товаров.
+    """
     soup = BeautifulSoup(html, 'html.parser')
     items = soup.find_all('a', class_='products-list-item__link link')
     return [HOST + item.get('href') for item in items]
 
+# Заменить все пробельные символы и их повторы на обычный пробел
 def clean_text(text: str) -> str:
     return ' '.join(text.split())
 
+# Получить информацию о товаре по адресу его страницы, сохранив также
+# соответствующее ему изображение в файле
 def get_item(item_url: str) -> dict:
     html = get_html(item_url)
 
@@ -165,7 +210,12 @@ def get_item(item_url: str) -> dict:
 
     return item
 
+# Обработать полностью всю категорию и возвратить информацию обо всех найденных
+# в ней товарах
 def get_all_items(category_url: str) -> list:
+    """Входные параметры:
+    category_url: str - адрес первой страницы категории товаров.
+    """
     print('Обрабатывается начальная страница...')
     items = []
     base_url = category_url
@@ -186,6 +236,9 @@ def get_all_items(category_url: str) -> list:
     print(f'Итого товаров получено: {len(items)}')
     return items
 
+# Сохранить в csv-файл информацию о товарах, полученную ранее с помощью
+# функции get_all_items(). Изображения при этом уже не сохраняются, т.к. при
+# штатной работе они должны быть сохранены при вызове упомянутой функции
 def save_items(items: str, filename: str) -> bool:
     keys = ['model_name', 'marking', 'url', 'image', 'brand_name',
             'price_current', 'compound', 'width', 'diameter', 'season',
